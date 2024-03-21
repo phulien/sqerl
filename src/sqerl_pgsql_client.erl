@@ -322,8 +322,8 @@ pqc_fetch_internal(_Name, {ok, PrepQ}, Cache, _Con, _PrepareFun) ->
 prepare_statement(Connection, Name, SQL) when is_atom(Name) ->
     case epgsql:parse(Connection, atom_to_list(Name), SQL, []) of
         {ok, Statement} ->
-            {ok, {statement, SName, Desc, DataTypes}} = epgsql:describe(Connection, Statement),
-            ColumnData = [ {CN, CT} || {column, CN, CT, _, _, _} <- Desc ],
+            {ok, {statement, SName, Desc, DataTypes}} = epgsql_describe(Connection, Statement),
+            ColumnData = get_out_fields(Desc),
             P = #prepared_statement{
               name = SName,
               input_types = DataTypes,
@@ -394,7 +394,12 @@ unpack_rows(ColumnNames, Rows) ->
 -spec extract_column_names({atom(), [#column{}]}) -> [any()].
 extract_column_names({result_column_data, Columns}) ->
     %% For column data coming from a query result
-    [Name || {column, Name, _Type, _Size, _Modifier, _Format} <- Columns];
+    lists:foldr(
+      fun({column, Name, _Type, _Size, _Modifier, _Format}, Acc) ->
+              [Name | Acc];
+         ({column, Name, _, _, _, _, _, _, _}, Acc) ->
+              [Name | Acc]
+      end, [], Columns);
 extract_column_names({prepared_column_data, ColumnData}) ->
     %% For column data coming from a prepared statement
     [Name || {Name, _Type} <- ColumnData].
@@ -433,3 +438,19 @@ set_statement_timeout(Connection, Timeout) ->
     SQL = list_to_binary(
             lists:flatten(io_lib:format("set statement_timeout=~p", [Timeout]))),
     epgsql:squery(Connection, SQL).
+
+epgsql_describe(Connection, Statement) ->
+    case epgsql:describe(Connection, Statement) of
+        {ok, {statement, SName, Desc, DataTypes}} ->
+            {ok, {statement, SName, Desc, DataTypes}};
+        {ok, {statement, SName, Desc, DataTypes, _Info}} ->
+            {ok, {statement, SName, Desc, DataTypes}}
+    end.
+
+get_out_fields(Desc) ->
+    lists:foldr(
+      fun({column, CN, CT, _, _, _}, Acc) ->
+              [{CN, CT} | Acc];
+         ({column, CN, CT, _, _, _, _, _, _}, Acc) ->
+              [{CN, CT} | Acc]
+      end, [], Desc).
