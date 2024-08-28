@@ -157,6 +157,9 @@ cquery(RecName, Query, Vals) ->
             {ok, N};
         {ok, N, _Rows} when is_integer(N) ->
             {ok, N};
+        {ok, [[{<<"count">>, N}]]} when is_integer(N) ->
+            %% SELECT COUNT(*)
+            {ok, N};
         {ok, Rows} when is_list(Rows) ->
             Msg = "query returned rows and no count; expected count",
             {error,
